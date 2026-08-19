@@ -1,0 +1,58 @@
+name: MapleStory Notice
+
+on:
+
+  workflow_dispatch:
+
+  schedule:
+    - cron: "7,17,27,37,47,57 * * * *"
+
+
+permissions:
+  contents: write
+
+
+jobs:
+
+  check-notice:
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+
+      - name: Install Python packages
+        run: |
+          pip install requests playwright
+          playwright install chromium --with-deps
+
+
+      - name: Check MapleStory notices
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          python maple_notice.py
+
+
+      - name: Save history
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add maple_history.json
+
+          if git diff --cached --quiet; then
+            echo "履歴に変更はありません"
+          else
+            git commit -m "Update MapleStory notice history"
+            git push
+          fi
