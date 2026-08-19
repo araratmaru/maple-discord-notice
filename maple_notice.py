@@ -10,7 +10,7 @@ from playwright.sync_api import sync_playwright
 # 設定
 # ==========================================
 
-WEBHOOK_URL = os.environ["DISCORD_WEBHOOK_URL"]
+WEBHOOK_URL = os.environ["https://discord.com/api/webhooks/1539720878655410297/HHaoJvXK2JxUbIo2roLkym9xll2_V9lxmTl66kwCnSKb7frE1xzmFi-GfipYNPpilUWE"]
 
 MAPLE_URL = "https://maplestory.nexon.co.jp/notice/all/"
 
@@ -40,7 +40,7 @@ CATEGORY_EMOJI = {
 
 
 # ==========================================
-# お知らせ一覧を取得
+# 公式サイトからお知らせ一覧を取得
 # ==========================================
 
 def get_notices():
@@ -82,7 +82,11 @@ def get_notices():
 
                 url = urljoin(MAPLE_URL, href)
 
-                if any(n["url"] == url for n in notices):
+                # 同じURLを重複登録しない
+                if any(
+                    notice["url"] == url
+                    for notice in notices
+                ):
                     continue
 
                 notices.append({
@@ -90,8 +94,12 @@ def get_notices():
                     "url": url
                 })
 
-            except Exception:
-                pass
+            except Exception as e:
+
+                print(
+                    "記事取得エラー：",
+                    e
+                )
 
         browser.close()
 
@@ -120,10 +128,10 @@ def detect_category(title):
 
 
 # ==========================================
-# Discordへ送信
+# Discord 新着通知
 # ==========================================
 
-def send_discord(notice):
+def send_new_notice(notice):
 
     title = notice["title"]
     url = notice["url"]
@@ -147,7 +155,8 @@ def send_discord(notice):
         "embeds": [
             {
                 "author": {
-                    "name": "MapleStory 公式お知らせ"
+                    "name":
+                    "🆕 MapleStory 新着お知らせ"
                 },
 
                 "title": title,
@@ -156,12 +165,15 @@ def send_discord(notice):
 
                 "description":
                     f"{emoji} **{category}**\n\n"
-                    f"🔗 タイトルをクリックすると公式サイトを開けます。",
+                    "新しいお知らせが掲載されました。\n\n"
+                    "🔗 タイトルをクリックすると"
+                    "公式サイトを開けます。",
 
                 "color": color,
 
                 "footer": {
-                    "text": "MapleStory公式サイト 新着情報"
+                    "text":
+                    "MapleStory公式サイト 新着情報"
                 }
             }
         ]
@@ -176,7 +188,90 @@ def send_discord(notice):
     response.raise_for_status()
 
     print(
-        f"Discordへ投稿しました：{title}"
+        f"🆕 新着通知：{title}"
+    )
+
+
+# ==========================================
+# Discord 更新通知
+# ==========================================
+
+def send_update_notice(old_notice, new_notice):
+
+    old_title = old_notice["title"]
+
+    new_title = new_notice["title"]
+
+    url = new_notice["url"]
+
+    category = detect_category(new_title)
+
+    color = CATEGORY_COLORS.get(
+        category,
+        0x95A5A6
+    )
+
+    emoji = CATEGORY_EMOJI.get(
+        category,
+        "🍁"
+    )
+
+    data = {
+
+        "username": "メイプル公式情報",
+
+        "embeds": [
+            {
+                "author": {
+                    "name":
+                    "🔄 MapleStory お知らせ更新"
+                },
+
+                "title": new_title,
+
+                "url": url,
+
+                "description":
+                    f"{emoji} **{category}**\n\n"
+                    "公式のお知らせが更新されました。\n\n"
+                    f"**更新前**\n{old_title}\n\n"
+                    f"**更新後**\n{new_title}\n\n"
+                    "🔗 タイトルをクリックすると"
+                    "公式サイトを開けます。",
+
+                # 更新通知はオレンジ
+                "color": 0xE67E22,
+
+                "footer": {
+                    "text":
+                    "MapleStory公式サイト 更新情報"
+                }
+            }
+        ]
+    }
+
+    response = requests.post(
+        WEBHOOK_URL,
+        json=data,
+        timeout=30
+    )
+
+    response.raise_for_status()
+
+    print(
+        "🔄 更新を検出しました："
+    )
+
+    print(
+        f"   {old_title}"
+    )
+
+    print(
+        "   ↓"
+    )
+
+    print(
+        f"   {new_title}"
     )
 
 
@@ -197,11 +292,35 @@ def load_history():
             encoding="utf-8"
         ) as f:
 
-            return json.load(f)
+            history = json.load(f)
 
     except Exception:
 
         return []
+
+    # --------------------------------------
+    # 古いURLだけの形式だった場合
+    # --------------------------------------
+
+    if history and isinstance(history[0], str):
+
+        print(
+            "古い履歴形式を検出しました。"
+        )
+
+        print(
+            "新しい形式へ移行します。"
+        )
+
+        return [
+            {
+                "url": url,
+                "title": None
+            }
+            for url in history
+        ]
+
+    return history
 
 
 # ==========================================
@@ -230,9 +349,17 @@ def save_history(history):
 
 def main():
 
-    print("==============================")
-    print("メイプル公式お知らせ確認開始")
-    print("==============================")
+    print(
+        "=============================="
+    )
+
+    print(
+        "🍁 メイプル公式お知らせ確認開始"
+    )
+
+    print(
+        "=============================="
+    )
 
     notices = get_notices()
 
@@ -242,73 +369,139 @@ def main():
 
     history = load_history()
 
+
     # ======================================
-    # 初回
+    # 履歴が完全に空の場合
     # ======================================
 
     if not history:
 
-        print("初回起動です。")
-
         print(
-            "現在の記事を履歴に登録します。"
+            "初回起動です。"
         )
 
-        history = [
-            notice["url"]
-            for notice in notices
-        ]
+        print(
+            "現在の記事を履歴へ登録します。"
+        )
 
-        save_history(history)
+        save_history(notices)
 
         print(
-            "登録完了。今回はDiscordへ投稿しません。"
+            "登録完了。"
+        )
+
+        print(
+            "今回はDiscordへ投稿しません。"
         )
 
         return
 
 
     # ======================================
-    # 新着確認
+    # URLをキーにした辞書を作成
     # ======================================
 
-    new_notices = [
+    history_dict = {
 
-        notice
+        item["url"]: item
 
-        for notice in notices
+        for item in history
 
-        if notice["url"] not in history
-
-    ]
+    }
 
 
-    if not new_notices:
+    new_count = 0
 
-        print(
-            "新しいお知らせはありません。"
+    update_count = 0
+
+
+    # ======================================
+    # 現在の記事をチェック
+    # ======================================
+
+    for notice in reversed(notices):
+
+        url = notice["url"]
+
+        title = notice["title"]
+
+
+        # ----------------------------------
+        # 新しいURL
+        # ----------------------------------
+
+        if url not in history_dict:
+
+            send_new_notice(
+                notice
+            )
+
+            history.append(
+                notice
+            )
+
+            history_dict[url] = notice
+
+            new_count += 1
+
+            continue
+
+
+        # ----------------------------------
+        # 既存URL
+        # ----------------------------------
+
+        old_notice = history_dict[url]
+
+        old_title = old_notice.get(
+            "title"
         )
 
-        return
+
+        # 古い履歴形式から移行した直後
+        if old_title is None:
+
+            old_notice["title"] = title
+
+            continue
 
 
-    print(
-        f"{len(new_notices)}件の新着を発見しました。"
-    )
+        # ----------------------------------
+        # タイトル変更を検出
+        # ----------------------------------
+
+        if old_title != title:
+
+            send_update_notice(
+                old_notice,
+                notice
+            )
+
+            old_notice["title"] = title
+
+            update_count += 1
 
 
-    # 古いものから投稿
-
-    for notice in reversed(new_notices):
-
-        send_discord(notice)
-
-        history.append(
-            notice["url"]
-        )
-
+    # ======================================
+    # 履歴保存
+    # ======================================
 
     save_history(history)
+
+
+    print()
+
+    print(
+        "確認完了"
+    )
+
+    print(
+        f"🆕 新着：{new_count}件"
+    )
+
+    print(
+        f"🔄 更新：{update_count}件"
+    )
 
 
 if __name__ == "__main__":
