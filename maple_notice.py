@@ -10,7 +10,7 @@ from playwright.sync_api import sync_playwright
 # 設定
 # ==========================================
 
-WEBHOOK_URL = os.environ["https://discord.com/api/webhooks/1539720878655410297/HHaoJvXK2JxUbIo2roLkym9xll2_V9lxmTl66kwCnSKb7frE1xzmFi-GfipYNPpilUWE"]
+WEBHOOK_URL = os.environ["DISCORD_WEBHOOK_URL"]
 
 MAPLE_URL = "https://maplestory.nexon.co.jp/notice/all/"
 
